@@ -102,6 +102,7 @@ clear_lock() {
 check_remote() {
     ## do we have a remote check defined
     if [ "${REMOTE_CHECK}x" != 'x' ]; then
+        printf "Checking remote system...\n"
         ## run the check
         $REMOTE_CHECK > /dev/null 2>&1
         ## exit if above returned non-zero
@@ -113,25 +114,58 @@ check_remote() {
 }
 
 ## main replication function
+## zfs send tank/foo@snap | mbuffer -s 128k -m 1G 2>/dev/null | ssh user@host 'mbuffer -s 128k -m 1G | zfs receive tank/backup'
 do_send() {
         ## check our send lockfile
         check_lock "${LOGBASE}/.send.lock"
-        ## create initial send command based on arguments
         ## if first snapname is NULL we do not generate an inremental
         if [ "${1}" == "NULL" ]; then
                 local sendargs="-R"
         else
                 local sendargs="-R -I ${1}"
         fi
+        ## log sending
         printf "Sending snapshots...\n"
-        printf "RUNNING: %s send %s %s | %s %s\n" "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${3}"
-        ${ZFS} send ${sendargs} ${2} | ${RECEIVE_PIPE} ${3}
+        ## check for remote command
+        if [ "${REMOTE_CMD}x" != 'x' ]; then
+            ## check for mbuffer command
+            if [ "${MBUFFER_CMD}x" != 'x' ]; then
+                ## log command
+                printf "RUNNING: %s send %s %s | %s 2>/dev/null | %s %s\n" \
+                "${ZFS}" "${sendargs}" "${2}" "${MBUFFER_CMD}" "${REMOTE_CMD}" "'${MBUFFER_CMD} | ${RECEIVE_CMD} ${3}'"
+                ## run command
+                ${ZFS} send ${sendargs} ${2} | ${MBUFFER_CMD} 2>/dev/null | ${REMOTE_CMD} "'${MBUFFER_CMD} | ${RECEIVE_CMD} ${3}'"
+            else
+                ## log command
+                printf "RUNNING: %s send %s %s | %s %s %s\n" \
+                "${ZFS}" "${sendargs}" "${2}" "${REMOTE_CMD}" "${RECEIVE_CMD}" "${3}"
+                ## run command
+                ${ZFS} send ${sendargs} ${2} | ${REMOTE_CMD} ${RECEIVE_CMD} ${3}
+            fi
+        else
+            ## check for mbuffer command
+            if [ "${MBUFFER_CMD}x" != 'x' ]; then
+                ## log command
+                printf "RUNNING: %s send %s %s | %s | %s %s\n" \
+                "${ZFS}" "${sendargs}" "${2}" "${MBUFFER_CMD}" "${RECEIVE_CMD}" "${3}"
+                ## run command
+                ${ZFS} send ${sendargs} ${2} | ${MBUFFER_CMD} | ${RECEIVE_CMD} ${3}
+            else
+                ## log command
+                printf "RUNNING: %s send %s %s | %s %s\n" \
+                "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_CMD}" "${3}"
+                ## run command
+                ${ZFS} send ${sendargs} ${2} | ${RECEIVE_CMD} ${3}
+            fi
+        fi
         ## clear lockfile
         clear_lock "${LOGBASE}/.send.lock"
 }
 
 ## create and manage our zfs snapshots
 do_snap() {
+        ## log action
+        printf "Creating snapshots...\n"
         ## make sure we aren't ever creating simultaneous snapshots
         check_lock "${LOGBASE}/.snapshot.lock"
         ## set our snap name
@@ -155,10 +189,10 @@ do_snap() {
                 ## get current existing snapshots that look like
                 ## they were made by this script
                 if [ $RECURSE_CHILDREN -ne 1 ]; then
-                    local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
+                    local temps=$(${ZFS} list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
                         grep "${local_set}\@autorep-")
                 else
-                    local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
+                    local temps=$(${ZFS} list -Hr -o name -s creation -t snapshot ${local_set}|\
                         grep "${local_set}\@autorep-")
                 fi
                 ## just a counter var
@@ -235,13 +269,11 @@ init() {
         exit_clean
     fi
     ## check remote health
-    printf "Checking remote system...\n"
     check_remote
     ## do snapshots and send
-    printf "Creating snapshots...\n"
     do_snap
     ## that's it...sending called from do_snap
-    printf "Finished all operations for ...\n"
+    printf "Finished all operations\n"
     ## show a nice message and exit...
     exit_clean
 }

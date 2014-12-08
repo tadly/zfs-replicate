@@ -35,6 +35,15 @@ LOG_KEEP=10
 ## where to place log files and temporary lock files
 LOGBASE=/root/logs
 
+## path to zfs binary
+ZFS=/sbin/zfs
+
+## path to GNU find binary
+##
+## solaris `find` does not support the -maxdepth option, which is required
+## on solaris 11, GNU find is typically located at /usr/bin/gfind
+FIND=/usr/bin/find
+
 ## ip address or hostname of a remote server
 ## this variable may be referenced in the
 ## additional settings below
@@ -50,26 +59,21 @@ REMOTE_SERVER="192.168.100.2"
 ## and could be commented out and ignored
 REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 
-## pipe to your remote host...the pool/snap
-## DO NOT INCLUDE THE PIPE (|) CHARACTER
-## fs names from this host will be used on the remote
-##
-## for increased transfer speed you may want to specifically
-## enumerate your prefered cipher order in your ssh command:
-## ssh -c arcfour256,arcfour128,blowfish-cbc,aes128-ctr,aes192-ctr,aes256-ctr
-##
-## for local replication do not
-## call ssh or reference a remote server
-RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
+## command for contacting the remote host
+## ssh shown below with enumerated ciphers for incraesed
+## transfer speed - adjust as needed or comment out for local
+## transfer without a remote system
+REMOTE_CMD="ssh -c arcfour256,arcfour128,blowfish-cbc,aes128-ctr,aes192-ctr,aes256-ctr ${REMOTE_SERVER}"
 
-## path to zfs binary
-ZFS=/sbin/zfs
+## zfs receive command with arguments
+## sending is calculated by logic within the script
+RECEIVE_CMD="${ZFS} receive -vFd"
 
-## path to GNU find binary
-##
-## solaris `find` does not support the -maxdepth option, which is required
-## on solaris 11, GNU find is typically located at /usr/bin/gfind
-FIND=/usr/bin/find
+## mbuffer command - comment out if not used
+## see the following links for more information
+## http://everycity.co.uk/alasdair/2010/07/using-mbuffer-to-speed-up-slow-zfs-send-zfs-receive/
+## https://dan.langille.org/2014/05/03/zfs-send-on-freebsd-over-ssh-using-mbuffer/
+MBUFFER_CMD="mbuffer -s 128k -m 1G"
 
 ## get the current date info
 DOW=$(date "+%a")
