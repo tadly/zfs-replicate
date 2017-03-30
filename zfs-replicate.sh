@@ -2,6 +2,15 @@
 ## zfs-replicate.sh
 ## file revision $Id$
 ##
+## Exit codes:
+##  0 Success (obviously)
+##  1 No config given
+##  2 Sanity check failed (snap keep count below 2)
+##  3 lock exists
+##  4 Remote health check failed
+##  5 zfs snapshot failed
+##  10 partial success
+##
 
 ############################################
 ##### warning gremlins live below here #####
@@ -48,17 +57,21 @@ check_old_log() {
     fi
 }
 
-## exit 0 and delete old log files
+## delete old log files and exit
 exit_clean() {
-    ## print errors
-    if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
-        printf "Last operation returned error code: %s\n" "${1}"
-    fi
     ## check log files
     check_old_log
-    ## always exit 0
+
+    ## clear our lockfile
+    clear_lock "${LOGBASE}/.snapshot.lock"
+
+    ## exit with the code given or 0 if empty
     printf "Exiting...\n"
-    exit 0
+    if [ -z ${1} ]; then
+        exit 0
+    else
+        exit ${1}
+    fi
 }
 
 ## lockfile creation and maintenance
@@ -71,17 +84,17 @@ check_lock () {
         local ps=$(ps auxww|grep $lpid|grep -v grep)
         if [ "${ps}x" != 'x' ]; then
             ## looks like it's still running
-            printf "ERROR: This script is already running as: %s\n" "${ps}"
+            printf "ERROR: This script is already running as: %s\n" "${ps}" 1>&2
         else
             ## well the lockfile is there...stale?
-            printf "ERROR: Lockfile exists: %s\n" "${1}"
-            printf "However, the contents do not match any "
-            printf "currently running process...stale lockfile?\n"
+            printf "ERROR: Lockfile exists: %s\n" "${1}" 1>&2
+            printf "However, the contents do not match any " 1>&2
+            printf "currently running process...stale lockfile?\n" 1>&2
         fi
         ## tell em what to do...
-        printf "To run script please delete: %s\n" "${1}"
+        printf "To run script please delete: %s\n" "${1}" 1>&2
         ## compress log and exit...
-        exit_clean
+        exit_clean 3
     else
         ## well no lockfile..let's make a new one
         printf "Creating lockfile: %s\n" "${1}"
@@ -101,13 +114,13 @@ clear_lock() {
 ## check remote system health
 check_remote() {
     ## do we have a remote check defined
-    if [ "${REMOTE_CHECK}x" != 'x' ]; then
+    if [ ! -z "${REMOTE_CHECK}" ]; then
         ## run the check
         $REMOTE_CHECK > /dev/null 2>&1
         ## exit if above returned non-zero
         if [ $? != 0 ]; then
-            printf "ERROR: Remote health check '%s' failed!\n" "${REMOTE_CHECK}"
-            exit_clean
+            printf "ERROR: Remote health check '%s' failed!\n" "${REMOTE_CHECK}" 1>&2
+            exit_clean 4
         fi
     fi
 }
@@ -134,7 +147,7 @@ do_send() {
     return ${send_status}
 }
 
-## small wrapper around zfs destrou
+## small wrapper around zfs destroy
 do_destroy() {
     ## get file set argument
     local snapshot="${1}"
@@ -154,6 +167,8 @@ do_snap() {
     check_lock "${LOGBASE}/.snapshot.lock"
     ## set our snap name
     local sname="autorep-${NAMETAG}"
+    ## will be true if one of the sets doesn't succeed 
+    local partial=false
     ## generate snapshot list and cleanup old snapshots
     for foo in $REPLICATE_SETS; do
         ## split dataset into local and remote parts and trim trailing slashes
@@ -163,9 +178,10 @@ do_snap() {
         if [ $ALLOW_ROOT_DATASETS -ne 1 ]; then
             if [ "${local_set}" == $(basename "${local_set}") ] && \
                 [ "${remote_set}" == $(basename "${remote_set}") ]; then
-                printf "WARNING: Replicating root datasets can lead to data loss.\n"
-                printf "To allow root dataset replication and disable this warning "
-                printf "set ALLOW_ROOT_DATASETS=1 in this script.  Skipping: %s\n\n" "${foo}"
+                printf "WARNING: Replicating root datasets can lead to data loss.\n" 1>&2
+                printf "To allow root dataset replication and disable this warning " 1>&2
+                printf "set ALLOW_ROOT_DATASETS=1 in this script.  Skipping: %s\n\n" "${foo}" 1>&2
+                partial=true
                 ## skip this set
                 continue
             fi
@@ -230,7 +246,10 @@ do_snap() {
         ## check return
         if [ $? -ne 0 ]; then
             ## oops...that's not right
-            exit_clean $?
+            local exit_code=$?
+            printf "ERROR: Failed creating snapshot, " 1>&2
+            printf "exited with: %s\n" "${exit_code}" 1>&2
+            exit_clean 5
         fi
         ## send incremental if snap count 1 or more
         ## otherwise send a regular stream
@@ -241,22 +260,28 @@ do_snap() {
         fi
         ## check return of do_send
         if [ $? != 0 ]; then
-            printf "ERROR: Failed to send snapshot %s@$%s\n" "${local_set}" "${sname}"
-            printf "Deleting the local snapshot %s@$%s\n" "${local_set}" "${sname}"
+            local exit_code=$?
+            printf "ERROR: Failed to send snapshot %s@$%s\n" "${local_set}" "${sname}" 1>&2
+            printf "send command exited with: %s\n" "${exit_code}" 1>&2
+            printf "Deleting the local snapshot %s@$%s\n" "${local_set}" "${sname}" 1>&2
             do_destroy ${local_set}@${sname}
+            partial=true
         fi
     done
-    ## clear our lockfile
-    clear_lock "${LOGBASE}/.snapshot.lock"
+
+    ## one or more failed
+    if ${partial}; then
+        exit_clean 10
+    fi
 }
 
 ## it all starts here...
 init() {
     ## sanity check
     if [ $SNAP_KEEP -lt 2 ]; then
-        printf "ERROR: You must keep at least 2 snaps for incremental sending.\n"
-        printf "Please check the setting of 'SNAP_KEEP' in the script.\n"
-        exit_clean
+        printf "ERROR: You must keep at least 2 snaps for incremental sending.\n" 1>&2
+        printf "Please check the setting of 'SNAP_KEEP' in the script.\n" 1>&2
+        exit_clean 2
     fi
     ## check remote health
     printf "Checking remote system...\n"
@@ -267,32 +292,36 @@ init() {
     ## that's it...sending called from do_snap
     printf "Finished all operations for ...\n"
     ## show a nice message and exit...
-    exit_clean
+    exit_clean 0
 }
 
 ## attempt to load configuration
-if [ "${1}x" != "x" ] && [ -f "${1}" ]; then
+if [ -f "${1}" ]; then
     ## source passed config
     printf "Sourcing configuration from %s\n" "${1}"
-    . "${1}"
+    source "${1}"
 elif [ -f "config.sh" ]; then
     ## source default config
     printf "Sourcing configuration from config.sh\n"
-    . "config.sh"
+    source "config.sh"
 elif [ -f "$(dirname ${0})/config.sh" ]; then
     ## source script path config
     printf "Sourcing configuration from $(dirname ${0})/config.sh\n"
-    . "$(dirname ${0})/config.sh"
+    source "$(dirname ${0})/config.sh"
 else
     ## display error
-    printf "ERROR: Cannot continue without a valid configuration file!\n"
-    printf "Usage: %s <config>\n" "${0}"
+    printf "ERROR: Cannot continue without a valid configuration file!\n" 1>&2
+    printf "Usage: %s <config>\n" "${0}" 1>&2
     ## exit
-    exit 0
+    exit 1
 fi
 
 ## make sure our log dir exits
-[ ! -d "${LOGBASE}" ] && mkdir -p "${LOGBASE}"
+mkdir -p "${LOGBASE}"
 
 ## this is where it all starts
-init > "${LOGFILE}" 2>&1
+## we use tee and process substitution to
+##  1. write informative message to stdout
+##  2. write error message to stderr
+##  3. write both, stdout and stderr to the logfile
+init > >(tee "${LOGFILE}") 2> >(tee "${LOGFILE}" >&2)
