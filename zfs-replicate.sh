@@ -64,6 +64,7 @@ exit_clean() {
 
     ## clear our lockfile
     clear_lock "${LOGBASE}/.snapshot.lock"
+    clear_lock "${LOGBASE}/.send.lock"
 
     ## exit with the code given or 0 if empty
     printf "Exiting...\n"
@@ -136,9 +137,10 @@ do_send() {
     else
         local sendargs="-R -I ${1}"
     fi
+    local command=$(printf "${RECEIVE_PIPE}" "${3}")
     printf "Sending snapshots...\n"
-    printf "RUNNING: %s send %s %s | %s %s\n" "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${3}"
-    ${ZFS} send ${sendargs} ${2} | ${RECEIVE_PIPE} ${3}
+    printf "RUNNING: %s send %s %s | %s\n" "${ZFS}" "${sendargs}" "${2}" "${command}"
+    ${ZFS} send ${sendargs} ${2} | eval ${command}
     ## get status
     local send_status=$?
     ## clear lockfile
