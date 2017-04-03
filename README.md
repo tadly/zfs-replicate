@@ -73,6 +73,7 @@ REMOTE_SERVER='192.168.100.2'
 REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 
 ## pipe to your remote host...the pool/snap
+## %s will be replaced with pool/snap
 ## DO NOT INCLUDE THE PIPE (|) CHARACTER
 ## fs names from this host will be used on the remote
 ##
@@ -82,7 +83,7 @@ REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 ##
 ## for local replication do not
 ## call ssh or reference a remote server
-RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
+RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd %s"
 
 ## path to zfs binary
 ZFS=/sbin/zfs
