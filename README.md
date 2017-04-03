@@ -84,6 +84,9 @@ REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 ## for local replication do not
 ## call ssh or reference a remote server
 RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd %s"
+## Example using the included ncgate script.
+## Use with caution, this is unencrypted. Fast but unencrypted!
+## RECEIVE_PIPE="./ncgate.sh -t <target> -c \"| zfs recv %s\""
 
 ## path to zfs binary
 ZFS=/sbin/zfs
