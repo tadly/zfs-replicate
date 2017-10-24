@@ -52,8 +52,9 @@ if [ -z "${COMMAND}" ] || [ -z "${TARGET}" ] || [ -z "${PORT}" ]; then
     exit 1
 fi
 
-REMOTE_LOG="/tmp/${0}-server.log"
-REMOTE_CODE="/tmp/${0}-server.code"
+tmp_name="$(date +%s)"
+REMOTE_LOG="/tmp/ncgate-${tmp_name}-server.log"
+REMOTE_CODE="/tmp/ncgate-${tmp_name}-server.code"
 
 printf "Spawning remote server...\n"
 (ssh ${TARGET} "nc -l ${PORT} ${COMMAND} 2>&1" > "${REMOTE_LOG}"; echo $? > "${REMOTE_CODE}") &
