@@ -74,12 +74,13 @@ if [ -f "${REMOTE_LOG}" ]; then
 fi
 
 # remote exit code
+code=-1
 if [ -f "${REMOTE_CODE}" ]; then
     code=$(cat "${REMOTE_CODE}")
     rm "${REMOTE_CODE}"
 fi
 
-if [ $code != 0 ]; then
+if [ $code -eq 0 ]; then
     printf "$log\n" 1>&2
 else
     printf "$log\n"
