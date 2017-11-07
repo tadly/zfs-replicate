@@ -63,6 +63,7 @@ exit_clean() {
     check_old_log
 
     ## clear our lockfile
+    clear_lock "${LOGBASE}/.zfs-replicate.lock"
     clear_lock "${LOGBASE}/.snapshot.lock"
     clear_lock "${LOGBASE}/.send.lock"
 
@@ -279,6 +280,8 @@ do_snap() {
 
 ## it all starts here...
 init() {
+    check_lock "${LOGBASE}/.zfs-replicate.lock"
+
     ## sanity check
     if [ $SNAP_KEEP -lt 2 ]; then
         printf "ERROR: You must keep at least 2 snaps for incremental sending.\n" 1>&2
@@ -294,6 +297,7 @@ init() {
     ## that's it...sending called from do_snap
     printf "Finished all operations for ...\n"
     ## show a nice message and exit...
+
     exit_clean 0
 }
 
@@ -321,14 +325,10 @@ fi
 ## make sure our log dir exits
 mkdir -p "${LOGBASE}"
 
-check_lock "${LOGBASE}/.zfs-replicate.lock"
-
 ## this is where it all starts
 ## we use tee and process substitution to
 ##  1. write informative message to stdout
 ##  2. write error message to stderr
 ##  3. write both, stdout and stderr to the logfile
 init > >(tee "${LOGFILE}") 2> >(tee "${LOGFILE}" >&2)
-
-clear_lock "${LOGBASE}/.zfs-replicate.lock"
 
