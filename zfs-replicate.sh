@@ -321,9 +321,14 @@ fi
 ## make sure our log dir exits
 mkdir -p "${LOGBASE}"
 
+check_lock "${LOGBASE}/.zfs-replicate.lock"
+
 ## this is where it all starts
 ## we use tee and process substitution to
 ##  1. write informative message to stdout
 ##  2. write error message to stderr
 ##  3. write both, stdout and stderr to the logfile
 init > >(tee "${LOGFILE}") 2> >(tee "${LOGFILE}" >&2)
+
+clear_lock "${LOGBASE}/.zfs-replicate.lock"
+
