@@ -96,7 +96,7 @@ check_lock () {
         ## tell em what to do...
         printf "To run script please delete: %s\n" "${1}" 1>&2
         ## compress log and exit...
-        exit_clean 3
+        exit 3
     else
         ## well no lockfile..let's make a new one
         printf "Creating lockfile: %s\n" "${1}"
